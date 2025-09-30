@@ -113,49 +113,22 @@ for p in project_ids:
 
     # suffix added to different functions and variables
     suffix = "_" + p
+    print(f"Processing Project{str(suffix)}")
     logger.info(f"Processing Project{str(suffix)}")
 
     # Edit compiled files in tflite-model/
     model_dir = os.path.join(tmpdir, p, 'tflite-model')
     for f in os.listdir(model_dir):
-        if "compiled" in f:
-
-            # List of patterns to look for and append with suffix
-            # Get learn block ID pattern to add projectID as suffix
-            patterns = [
-                r"tflite_learn_\d+"
-            ]
-            edit_file(os.path.join(model_dir, f), patterns, suffix)
-
-            # Rename filenames
-            new_f = f.replace("_compiled", f"{suffix}_compiled")
-            os.rename(os.path.join(model_dir, f), os.path.join(model_dir, new_f))
-
+        if f.startswith("tflite_learn_"):
             # copy to target_dir (1st project)
             if project_ids.index(p) > 0:
-                shutil.copy(os.path.join(model_dir, new_f), os.path.join(target_dir, 'tflite-model', new_f))
-
-        elif f.startswith("tflite_learn_"):
-            patterns = [
-                r"tflite_learn_\d+"
-            ]
-            edit_file(os.path.join(model_dir, f), patterns, suffix)
-
-            # Rename filenames
-            name, ext = os.path.splitext(f)
-            new_f = f"{name}{suffix}{ext}"
-            os.rename(os.path.join(model_dir, f), os.path.join(model_dir, new_f))
-
-            # copy to target_dir (1st project)
-            if project_ids.index(p) > 0:
-                shutil.copy(os.path.join(model_dir, new_f), os.path.join(target_dir, 'tflite-model', new_f))
+                shutil.copy(os.path.join(model_dir, f), os.path.join(target_dir, 'tflite-model', f))
 
     # Edit model_variables.h
     f = os.path.join(tmpdir, p, "model-parameters/model_variables.h")
 
     # Patterns may be missing for anomaly detection blocks
     patterns = [
-        r"tflite_learn_\d+",
         r"tflite_graph_\d+",
         "ei_classifier_inferencing_categories",
         r"ei_dsp_config_\d+",
@@ -164,7 +137,12 @@ for p in project_ids:
         r"ei_learning_block_config_\d+",
         r"ei_learning_block_\d+_inputs",
         "ei_object_detection_nms(?!_config)",
-        "ei_calibration"
+        "ei_calibration",
+        r"ei_dn_standard_scaler_mean_\d+",
+        r"ei_dn_standard_scaler_scale_\d+",
+        r"ei_dn_standard_scaler_var_\d+",
+        r"ei_data_normalization_standard_scaler_config_\d+",
+        r"ei_data_normalization_config_\d+"
     ]
     edit_file(f, patterns, suffix)
 
