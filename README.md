@@ -1,5 +1,11 @@
 # Multi-Impulse Deployment to ESP32
 
+This repository is based on the GitHub project: https://github.com/edgeimpulse/multi-impulse-deployment-block/
+
+It is effectively a glorified file merger that downloads model artifacts from Edge Impulse via REST and combines them into a single inference SDK.
+
+> Note: this approach does not work with the existing SDK format in some cases because many `#define` directives are treated as numbers and the code can fail.
+
 ## Prerequisites
 
 - Edge Impulse API keys for each project you want to merge
@@ -45,7 +51,7 @@ python3 generate.py --out-directory ./output --api-keys ei_KEY1,ei_KEY2 --quanti
 Useful flags:
 
 - `--engine=tflite` — force regular TensorFlow Lite model output (default is EON-compiled model)
-- `--force-build` — rebuild from scratch instead of using cached artifacts (USE this for MOGU ALWAYS!!)
+- `--force-build` — rebuild from scratch instead of using cached artifacts
 
 Example with TFLite output and forced rebuild:
 
@@ -103,6 +109,30 @@ cp -r ../multi-impulse-deployment-block/output/tflite-model ./
 https://github.com/edgeimpulse/example-standalone-inferencing-espressif-esp32/blob/main/main/CMakeLists.txt
 
 > The Edge Impulse SDK is updated frequently, so keep the example repo in sync with the SDK release.
+
+## ESP32 CMake setup
+
+The ESP32 example may require changes to `main/CMakeLists.txt` to compile the generated SDK.
+
+```cmake
+include(${EI_SDK_FOLDER}/cmake/utils.cmake)
+
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(SOURCE_FILES "../edge-impulse-sdk" "CMSIS" "*.cpp")
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(MODEL_FILES "../tflite-model" "CMSIS" "*.cpp")
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(CC_FILES "../edge-impulse-sdk" "CMSIS" "*.cc")
+# RECURSIVE_FIND_FILE_EXCLUDE_DIR(S_FILES "../edge-impulse-sdk" "CMSIS" "*.s")
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(C_FILES "../edge-impulse-sdk" "CMSIS" "*.c")
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(S_FILES_ESP_NN "${EI_SDK_FOLDER}/porting/espressif/ESP-NN" "CMSIS" "*.s")
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(S_FILES_ESP_DSP "${EI_SDK_FOLDER}/porting/espressif/esp-dsp/modules/fft" "CMSIS" "*.s")
+
+# list(APPEND SOURCE_FILES ${S_FILES})
+list(APPEND SOURCE_FILES ${C_FILES})
+list(APPEND SOURCE_FILES ${CC_FILES})
+list(APPEND SOURCE_FILES ${MODEL_FILES})
+
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(S_FILES_ESP_NN "${EI_SDK_FOLDER}/porting/espressif/ESP-NN" "CMSIS" "*.s")
+RECURSIVE_FIND_FILE_EXCLUDE_DIR(S_FILES_ESP_DSP "${EI_SDK_FOLDER}/porting/espressif/esp-dsp/modules/fft" "CMSIS" "*.s")
+```
 
 ## Build and flash the ESP32 firmware
 
