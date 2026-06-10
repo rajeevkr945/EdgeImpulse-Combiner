@@ -1,62 +1,133 @@
-# Deployment block to merge multiple impulses
+# Multi-Impulse Deployment to ESP32
 
-## Usage
+## Prerequisites
 
-Required flags:
-- ```--api-keys <key_1>,<key_2>,<key_n>,...```
-List of API keys of projects to include in the multi-impulse deployment
+- Edge Impulse API keys for each project you want to merge
+- Git
+- Python 3 (>= 3.7)
+- pip
+- unzip
+- Docker (optional, for containerized usage)
+- ESP-IDF 5.1.1 installed and configured for your environment, or follow the example repo README
+- An ESP32 board
 
-- ```--quantization-map <0/1>,<0/1>,<0/1>,...```
-List of the switches for quantization for each of the impulses for which API keys were provided. 0 - NOT quantized; 1 - QUANTIZED.
+## Generate a merged multi-impulse deployment (local)
 
-By default the EON compiled model is used, if you want to use regular tflite then add the option `--engine=tflite`. When switching between using EON compiled and regular tflite models, a `--force-build` flag is needed.
+1. Clone the deployment-block repo:
 
-By default, the block will download cached version of builds. You can force new builds using the `--force-build` option. If a cached version of the required build is not available, an exception will inform about it.
-
-### Locally
-
-Install the requirements
-```pip install -r requirements.txt```
-
-Retrieve API Keys of your projects and run the generate.py command as follows:
-```python
-generate.py --out-directory ./output \
-    --api-keys ei_0b0e...,ei_acde... \
-    --quantization-map 1,1
+```bash
+git clone https://github.com/edgeimpulse/multi-impulse-deployment-block.git
+cd multi-impulse-deployment-block
 ```
 
-This will request quantized version for each of the two projects.
+2. Install Python requirements:
 
-### Docker
+```bash
+pip install -r requirements.txt
+```
 
-Build the container:
-```docker build -t multi-impulse .```
+3. Prepare the API keys and quantization map.
 
-Then run:
-```docker run --rm -it -v $PWD:/home multi-impulse --api-keys ei_0b0e...,ei_acde...```
+- Get one Edge Impulse API key per project you want to merge.
+- Example: two projects using `KEY1` and `KEY2`.
+- The quantization map must have the same number of entries as API keys.
+  - Example: `1,1` (both quantized)
+  - Example: `1,0` (first quantized, second unquantized)
 
-### Custom deployment block
+4. Run `generate.py`.
 
-Initialize the custom block - select _Deployment block_ and _Library_ when prompted:
-```edge-impulse-blocks init```
+Basic command:
 
-Push the block:
-```edge-impulse-blocks push```
+```bash
+python3 generate.py --out-directory ./output --api-keys ei_KEY1,ei_KEY2 --quantization-map 1,1 --force-build
+```
 
-Then go your Organization and Edit the deployment block with:
-* CLI arguments: ```--api-keys ei_0b0e...,ei_acde... --quantization-map <0/1>,<0/1>```
-* Privileged mode: **Enabled**
+Useful flags:
 
-## Compiling the standalone example
+- `--engine=tflite` — force regular TensorFlow Lite model output (default is EON-compiled model)
+- `--force-build` — rebuild from scratch instead of using cached artifacts (USE this for MOGU ALWAYS!!)
 
-After the block is finished it generates a `deploy.zip` archive that is a standalone buildable example of using all the impulses in multi-impulse package.
+Example with TFLite output and forced rebuild:
 
-This can be useful to sanity-check that your combined impulses behave as expected.
+```bash
+python3 generate.py --out-directory ./output --api-keys ei_KEY1,ei_KEY2 --quantization-map 1,1 --engine=tflite --force-build
+```
 
-The Makefile is for Desktop environment (macOS/Linux). For embedded targets, you'll need to change the cross-compiler or integrate the multi-impulse inference library within your application.
+5. Confirm the generated output.
 
-1. Unzip the deploy.zip archive (from output/ directory if running on your laptop)
-2. Open the source/main.cpp file and fill the raw features arrays corresponding to the project IDs. You can get exampel arrays from raw dsp block output in each project.
-3. Run`./build.sh` to compile
-4. Run `./app` to check the static inferencing results
+Expected output structure:
 
+- `edge-impulse-sdk/` — Edge Impulse SDK C++ porting and headers
+- `model-parameters/` — model metadata and parameters
+- `tflite-model/` — TensorFlow Lite model, or an EON artifact if using `engine=EON`
+
+## Generate using Docker (optional)
+
+1. Build the container from the repo root:
+
+```bash
+docker build -t multi-impulse .
+```
+
+2. Run the container and mount the current directory so output is written to the host:
+
+```bash
+docker run --rm -it -v "$PWD":/home multi-impulse --api-keys ei_KEY1,ei_KEY2 --quantization-map 1,1 --engine=tflite
+```
+
+The generated files will appear under `./output` on the host.
+
+## Install the generated deployment into the ESP32 example repo
+
+1. Clone the ESP32 example repo:
+
+```bash
+git clone https://github.com/edgeimpulse/example-standalone-inferencing-espressif-esp32.git
+cd example-standalone-inferencing-espressif-esp32
+```
+
+2. Copy the generated folders from `multi-impulse-deployment-block/output` into the example repo root:
+
+```bash
+cp -r ../multi-impulse-deployment-block/output/edge-impulse-sdk ./
+cp -r ../multi-impulse-deployment-block/output/model-parameters ./
+cp -r ../multi-impulse-deployment-block/output/tflite-model ./
+```
+
+> If your output contains an EON artifact instead of `tflite-model`, place the EON model and headers into the locations expected by the ESP32 example.
+
+3. Verify the repo layout matches the example project structure.
+
+4. If needed, update `main/CMakeLists.txt` to match the latest example repository version:
+
+https://github.com/edgeimpulse/example-standalone-inferencing-espressif-esp32/blob/main/main/CMakeLists.txt
+
+> The Edge Impulse SDK is updated frequently, so keep the example repo in sync with the SDK release.
+
+## Build and flash the ESP32 firmware
+
+1. Prepare the ESP-IDF environment:
+
+```bash
+source $IDF_PATH/export.sh
+```
+
+Or, if the example repo includes it:
+
+```bash
+./get_idf
+```
+
+2. (Optional) Configure the project:
+
+```bash
+idf.py menuconfig
+```
+
+3. Build the project:
+
+```bash
+idf.py build
+```
+
+4. If you encounter missing include errors, verify that `edge-impulse-sdk` exists at the project root and contains the required porting headers. The example `main/CMakeLists.txt` expects `EI_SDK_FOLDER ../edge-impulse-sdk` relative paths.
